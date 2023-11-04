@@ -12,3 +12,8 @@
 
 - name: Extract from secrets.tar.gz.enc
   shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ WORKDIR }}/secrets.tar.gz.enc | tar -zxv -C {{ WORKDIR }}"
+
+- name: Remove secrets.tar.gz.enc
+  ansible.builtin.file:
+    path: "{{ WORKDIR }}/secrets.tar.gz.enc"
+    state: absent
