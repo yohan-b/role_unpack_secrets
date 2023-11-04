@@ -1,0 +1,14 @@
+---
+# tasks file for role_unpack_secrets
+- name: Create secrets directory
+  ansible.builtin.file:
+    path: "{{ WORKDIR }}/secrets"
+    state: directory
+
+- name: Download secrets.tar.gz.enc
+  ansible.builtin.get_url:
+    url: "https://{{ CLOUD_SERVER }}/s/{{ lookup('env','KEY') }}/download?path=%2F&files=secrets.tar.gz.enc"
+    dest: "{{ WORKDIR }}/secrets.tar.gz.enc"
+
+- name: Extract from secrets.tar.gz.enc
+  shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ WORKDIR }}/secrets.tar.gz.enc | tar -zxv -C {{ WORKDIR }}"
