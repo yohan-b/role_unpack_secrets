@@ -99,8 +99,24 @@
   environment:
     SECRETS_ARCHIVE_PASSPHRASE: "{{ lookup('env', 'SECRETS_ARCHIVE_PASSPHRASE') }}"
 
+- name: Extract from secrets.tar.gz.enc on localhost
+  shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ local_workdir }}/secrets.tar.gz.enc | tar -zxv -C {{ local_workdir }}"
+  environment:
+    SECRETS_ARCHIVE_PASSPHRASE: "{{ lookup('env', 'SECRETS_ARCHIVE_PASSPHRASE') }}"
+  delegate_to: localhost
+  when:
+    - local_system_uuid != remote_system_uuid
+    - LOCAL_AND_REMOTE
+
 - name: Remove secrets.tar.gz.enc
   ansible.builtin.file:
     path: "{{ remote_workdir }}/secrets.tar.gz.enc"
     state: absent
 
+- name: Remove secrets.tar.gz.enc on localhost
+  ansible.builtin.file:
+    path: "{{ local_workdir }}/secrets.tar.gz.enc"
+    state: absent
+  delegate_to: localhost
+  when:
+    - local_system_uuid != remote_system_uuid
