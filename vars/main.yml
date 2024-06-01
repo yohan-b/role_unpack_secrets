@@ -1,2 +1,5 @@
 ---
 # vars file for role_unpack_secrets
+LINUX_USERNAME: "yohan"
+SECRET_SSH_PORT: 2224
+WORKDIR: "secrets"

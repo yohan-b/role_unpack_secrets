@@ -1,19 +1,104 @@
 ---
 # tasks file for role_unpack_secrets
-- name: Create secrets directory
+- name: get local machine-id
+  command: cat /etc/machine-id
+  register: get_local_machine_id_output
+  delegate_to: localhost
+  changed_when: false
+
+- name: set local machine-id
+  ansible.builtin.set_fact:
+    local_system_uuid: "{{ get_local_machine_id_output.stdout }}"
+  delegate_to: localhost
+
+- name: get remote machine-id
+  command: cat /etc/machine-id
+  register: get_remote_machine_id_output
+  changed_when: false
+
+- name: set remote machine-id
+  ansible.builtin.set_fact:
+    remote_system_uuid: "{{ get_remote_machine_id_output.stdout }}"
+
+- name: set remote workdir path
+  ansible.builtin.set_fact:
+    remote_workdir: /home/{{ ansible_user_id }}/{{ WORKDIR }}
+
+- name: set local workdir path
+  ansible.builtin.set_fact:
+    local_workdir: /home/{{ lookup('env', 'USER') }}/{{ WORKDIR }}
+
+- name: remove remote workdir
   ansible.builtin.file:
-    path: "{{ WORKDIR }}/secrets"
+    path: "{{ remote_workdir }}"
+    state: absent
+
+- name: remove local workdir
+  ansible.builtin.file:
+    path: "{{ local_workdir }}"
+    state: absent
+  delegate_to: localhost
+  when: local_system_uuid != remote_system_uuid
+
+- name: create remote workdir
+  ansible.builtin.file:
+    path: "{{ remote_workdir }}"
     state: directory
 
-- name: Download secrets.tar.gz.enc
-  ansible.builtin.get_url:
-    url: "https://{{ CLOUD_SERVER }}/s/{{ lookup('env','KEY') }}/download?path=%2F&files=secrets.tar.gz.enc"
-    dest: "{{ WORKDIR }}/secrets.tar.gz.enc"
+- name: create local workdir
+  ansible.builtin.file:
+    path: "{{ local_workdir }}"
+    state: directory
+  delegate_to: localhost
+  when: local_system_uuid != remote_system_uuid
+
+- name: Find secret files
+  ansible.builtin.find:
+    paths: "/mnt/archives_critiques/secrets"
+    patterns: 'secrets.tar.gz.enc-*'
+  register: find_secret_files_output
+  remote_user: "{{ LINUX_USERNAME }}"
+  vars:
+    ansible_ssh_port: "{{ SECRET_SSH_PORT }}"
+  delegate_to: "{{ SECRET_HOST }}"
+  ignore_errors: true
+
+- name: Fetch secrets
+  ansible.builtin.fetch:
+    src: "{{ (find_secret_files_output.files | sort(attribute='mtime') | last).path }}"
+    dest: "{{ local_workdir }}/secrets.tar.gz.enc"
+    flat: yes
+  remote_user: "{{ LINUX_USERNAME }}"
+  vars:
+    ansible_ssh_port: "{{ SECRET_SSH_PORT }}"
+  delegate_to: "{{ SECRET_HOST }}"
+  when: find_secret_files_output.files | length > 0
+  ignore_errors: true
+
+- name: Check local secrets.tar.gz.enc status
+  stat:
+    path: "{{ local_workdir }}/secrets.tar.gz.enc"
+  register: local_stat_result
+  delegate_to: localhost
+
+- name: Assert that local secrets.tar.gz.enc exists
+  ansible.builtin.assert:
+    that:
+      - local_stat_result.stat.exists
+    fail_msg: "ERROR: Could not auto-retrieve secrets.tar.gz.enc. Please copy it in {{ local_workdir }} on Ansible controller and restart the playbook."
+  delegate_to: localhost
+
+- name: Copy secrets to remote server
+  ansible.builtin.copy:
+    src: "{{ local_workdir }}/secrets.tar.gz.enc"
+    dest: "{{ remote_workdir }}/secrets.tar.gz.enc"
+  when: local_system_uuid != remote_system_uuid
 
 - name: Extract from secrets.tar.gz.enc
-  shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ WORKDIR }}/secrets.tar.gz.enc | tar -zxv -C {{ WORKDIR }}"
+  shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ remote_workdir }}/secrets.tar.gz.enc | tar -zxv -C {{ remote_workdir }}"
 
 - name: Remove secrets.tar.gz.enc
   ansible.builtin.file:
-    path: "{{ WORKDIR }}/secrets.tar.gz.enc"
+    path: "{{ remote_workdir }}/secrets.tar.gz.enc"
     state: absent
+
