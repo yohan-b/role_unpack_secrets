@@ -96,6 +96,8 @@
 
 - name: Extract from secrets.tar.gz.enc
   shell: "openssl enc -aes-256-cbc -md md5 -pass env:SECRETS_ARCHIVE_PASSPHRASE -d -in {{ remote_workdir }}/secrets.tar.gz.enc | tar -zxv -C {{ remote_workdir }}"
+  environment:
+    SECRETS_ARCHIVE_PASSPHRASE: "{{ lookup('env', 'SECRETS_ARCHIVE_PASSPHRASE') }}"
 
 - name: Remove secrets.tar.gz.enc
   ansible.builtin.file:
